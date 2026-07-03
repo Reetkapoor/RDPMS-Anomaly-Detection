@@ -11,8 +11,8 @@
    python -m venv rdpms_env
 
 3. Activate it:
-   Windows:   rdpms_env\Scripts\activate
-   Linux/Mac: source rdpms_env/bin/activate
+   - Windows:   rdpms_env\Scripts\activate
+   - Linux/Mac: source rdpms_env/bin/activate
 
 4. Install dependencies:
    pip install -r requirements.txt
