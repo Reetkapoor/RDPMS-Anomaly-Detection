@@ -1,0 +1,12 @@
+# .gitignore
+__pycache__/
+*.pyc
+*.pyo
+.env
+datasets/
+*.csv
+*.xlsx
+*.log
+venv/
+rdpms_env/
+.vscode/

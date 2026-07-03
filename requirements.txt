@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+alembic
+pandas
+numpy
+scikit-learn
+joblib
+python-dotenv
+matplotlib
+seaborn
+streamlit
+streamlit-autorefresh

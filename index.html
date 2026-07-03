@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Remote Voltage Monitoring Dashboard</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.19.0/dist/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; background: #111827; color: #f9fafb; min-height: 100vh; padding: 20px; }
+
+  .dash-header { display:flex; align-items:center; justify-content:space-between; padding-bottom:16px; border-bottom:1px solid #374151; margin-bottom:20px; }
+  .dash-title { font-size:20px; font-weight:600; display:flex; align-items:center; gap:8px; }
+  .dash-sub { font-size:13px; color:#9ca3af; margin-top:3px; }
+  .header-right { display:flex; flex-direction:column; align-items:flex-end; gap:6px; }
+  .live-badge { font-size:11px; font-weight:600; padding:4px 10px; border-radius:20px; background:#052e16; color:#4ade80; display:flex; align-items:center; gap:5px; }
+  .live-dot { width:7px; height:7px; border-radius:50%; background:#4ade80; animation:pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+  .uptime-label { font-size:11px; color:#6b7280; }
+
+  .metrics-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:20px; }
+  .metric-card { background:#1f2937; border-radius:10px; padding:14px 16px; }
+  .metric-label { font-size:11px; color:#9ca3af; text-transform:uppercase; letter-spacing:0.05em; margin-bottom:6px; display:flex; align-items:center; gap:5px; }
+  .metric-value { font-size:22px; font-weight:600; line-height:1; }
+  .metric-sub { font-size:11px; color:#6b7280; margin-top:5px; }
+
+  .channel-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:20px; }
+  @media(max-width:560px){ .channel-grid{ grid-template-columns:1fr; } }
+
+  .channel-card { background:#1f2937; border:1.5px solid #374151; border-radius:12px; padding:16px; transition:border-color 0.3s; }
+  .channel-card.warn-border { border-color:#d97706; }
+  .channel-card.crit-border { border-color:#dc2626; }
+
+  .ch-header { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:12px; }
+  .ch-title { font-size:13px; font-weight:600; display:flex; align-items:center; gap:6px; color:#e5e7eb; }
+  .ch-badge { font-size:10px; padding:2px 8px; border-radius:20px; font-weight:600; }
+  .badge-ok   { background:#052e16; color:#4ade80; }
+  .badge-warn { background:#451a03; color:#fbbf24; }
+  .badge-crit { background:#450a0a; color:#f87171; }
+
+  .ch-reading { font-size:38px; font-weight:700; margin-bottom:4px; }
+  .ch-range { font-size:11px; color:#6b7280; margin-bottom:12px; }
+  .color-ok   { color:#4ade80; }
+  .color-warn { color:#fbbf24; }
+  .color-crit { color:#f87171; }
+
+  .gauge-track { height:6px; background:#374151; border-radius:3px; position:relative; margin-bottom:12px; overflow:visible; }
+  .gauge-fill { height:100%; border-radius:3px; transition:width 0.4s ease; }
+  .gauge-fill.safe { background:#16a34a; }
+  .gauge-fill.warn { background:#d97706; }
+  .gauge-fill.crit { background:#dc2626; }
+  .gauge-needle { position:absolute; top:-4px; width:2px; height:14px; border-radius:1px; background:#f9fafb; transform:translateX(-50%); transition:left 0.4s ease; }
+
+  .stats-row { display:flex; gap:10px; }
+  .stat-item { flex:1; }
+  .stat-lbl { font-size:10px; color:#6b7280; text-transform:uppercase; letter-spacing:0.04em; }
+  .stat-val  { font-size:13px; font-weight:600; color:#e5e7eb; }
+
+  .chart-panel { background:#1f2937; border:1px solid #374151; border-radius:12px; padding:16px; margin-bottom:14px; }
+  .chart-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .chart-title  { font-size:13px; font-weight:600; color:#e5e7eb; display:flex; align-items:center; gap:6px; }
+  .chart-controls { display:flex; gap:6px; }
+  .ctrl-btn { font-size:11px; padding:4px 10px; border-radius:8px; border:1px solid #4b5563; background:transparent; color:#9ca3af; cursor:pointer; }
+  .ctrl-btn.active { background:#374151; color:#f9fafb; }
+  .legend-row { display:flex; gap:16px; margin-bottom:10px; font-size:11px; color:#9ca3af; }
+  .legend-dot { width:8px; height:8px; border-radius:2px; display:inline-block; margin-right:4px; vertical-align:middle; }
+
+  .alerts-panel { background:#1f2937; border:1px solid #374151; border-radius:12px; padding:16px; margin-bottom:20px; }
+  .alerts-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; }
+  .alerts-title { font-size:13px; font-weight:600; color:#e5e7eb; display:flex; align-items:center; gap:6px; }
+  .badge-count { font-size:10px; background:#450a0a; color:#f87171; border-radius:10px; padding:1px 7px; font-weight:600; }
+  .clear-btn { font-size:11px; color:#6b7280; cursor:pointer; border:none; background:none; padding:0; display:flex; align-items:center; gap:4px; }
+  .alert-list { max-height:150px; overflow-y:auto; display:flex; flex-direction:column; gap:6px; }
+  .alert-item { display:flex; align-items:center; gap:8px; font-size:12px; padding:7px 10px; border-radius:8px; background:#111827; }
+  .alert-time { color:#6b7280; min-width:68px; font-size:11px; }
+  .alert-msg  { flex:1; color:#d1d5db; }
+  .alert-email-sent { font-size:10px; color:#4ade80; margin-left:4px; white-space:nowrap; }
+  .no-alerts { font-size:12px; color:#6b7280; padding:8px 0; text-align:center; }
+  .color-alert-warn { color:#fbbf24; }
+  .color-alert-crit { color:#f87171; }
+
+  /* email config panel */
+  .config-panel { background:#1f2937; border:1px solid #374151; border-radius:12px; padding:16px; margin-bottom:20px; }
+  .config-title { font-size:13px; font-weight:600; color:#e5e7eb; display:flex; align-items:center; gap:6px; margin-bottom:14px; }
+  .config-grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media(max-width:500px){ .config-grid{ grid-template-columns:1fr; } }
+  .config-field label { display:block; font-size:11px; color:#9ca3af; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.04em; }
+  .config-field input { width:100%; background:#111827; border:1px solid #374151; border-radius:8px; padding:8px 10px; color:#f9fafb; font-size:13px; outline:none; }
+  .config-field input:focus { border-color:#3b82f6; }
+  .config-field input.full { grid-column:1/-1; }
+  .config-row { display:flex; align-items:center; gap:12px; margin-top:12px; flex-wrap:wrap; }
+  .save-btn { padding:8px 18px; border-radius:8px; background:#2563eb; color:white; border:none; cursor:pointer; font-size:13px; font-weight:600; }
+  .save-btn:hover { background:#1d4ed8; }
+  .test-btn { padding:8px 14px; border-radius:8px; background:transparent; color:#9ca3af; border:1px solid #4b5563; cursor:pointer; font-size:13px; display:flex; align-items:center; gap:5px; }
+  .test-btn:hover { background:#374151; color:#f9fafb; }
+  .email-status { font-size:12px; color:#6b7280; }
+  .email-status.ok   { color:#4ade80; }
+  .email-status.err  { color:#f87171; }
+  .cooldown-row { display:flex; align-items:center; gap:8px; margin-top:10px; font-size:12px; color:#9ca3af; }
+  .cooldown-row input[type=range] { flex:1; accent-color:#3b82f6; }
+
+  .footer-row { display:flex; justify-content:space-between; align-items:center; font-size:11px; color:#6b7280; padding-top:10px; border-top:1px solid #374151; flex-wrap:wrap; gap:10px; }
+  .export-btn { display:flex; align-items:center; gap:5px; border:1px solid #4b5563; border-radius:8px; padding:6px 12px; background:transparent; color:#d1d5db; cursor:pointer; font-size:12px; }
+  .export-btn:hover { background:#374151; }
+
+  .status-ok   { color:#4ade80; }
+  .status-warn { color:#fbbf24; }
+  .status-crit { color:#f87171; }
+
+  .toggle-wrap { display:flex; align-items:center; gap:8px; font-size:12px; color:#9ca3af; }
+  .toggle { position:relative; width:36px; height:20px; }
+  .toggle input { opacity:0; width:0; height:0; }
+  .slider-tog { position:absolute; inset:0; background:#374151; border-radius:20px; cursor:pointer; transition:0.3s; }
+  .slider-tog:before { content:''; position:absolute; width:14px; height:14px; left:3px; top:3px; background:white; border-radius:50%; transition:0.3s; }
+  input:checked + .slider-tog { background:#2563eb; }
+  input:checked + .slider-tog:before { transform:translateX(16px); }
+</style>
+</head>
+<body>
+
+<!-- ===== HEADER ===== -->
+<div class="dash-header">
+  <div>
+    <div class="dash-title"><i class="ti ti-bolt"></i> Voltage Monitor</div>
+    <div class="dash-sub" id="syncLine">Waiting for data…</div>
+  </div>
+  <div class="header-right">
+    <div class="live-badge"><span class="live-dot"></span> Live</div>
+    <div class="uptime-label" id="uptimeLabel">Uptime: 0s</div>
+  </div>
+</div>
+
+<!-- ===== METRIC CARDS ===== -->
+<div class="metrics-row">
+  <div class="metric-card">
+    <div class="metric-label"><i class="ti ti-activity"></i> System status</div>
+    <div class="metric-value status-ok" id="statusLabel" style="font-size:18px">—</div>
+    <div class="metric-sub" id="statusDetail">Initializing</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label"><i class="ti ti-clock"></i> Sample rate</div>
+    <div class="metric-value" style="font-size:18px">1 Hz</div>
+    <div class="metric-sub">1 s interval</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label"><i class="ti ti-chart-line"></i> Samples</div>
+    <div class="metric-value" id="sampleCount" style="font-size:18px">0</div>
+    <div class="metric-sub">this session</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label"><i class="ti ti-mail"></i> Emails sent</div>
+    <div class="metric-value" id="emailCount" style="font-size:18px">0</div>
+    <div class="metric-sub" id="nextEmailLabel">—</div>
+  </div>
+</div>
+
+<!-- ===== EMAIL CONFIG PANEL ===== -->
+<div class="config-panel">
+  <div class="config-title"><i class="ti ti-mail-forward"></i> Email alert configuration</div>
+  <div class="config-grid">
+    <div class="config-field">
+      <label>EmailJS Public Key</label>
+      <input type="text" id="cfgPublicKey" value="vmUkw9zF7fZAXJkQ1" />
+    </div>
+    <div class="config-field">
+      <label>Service ID</label>
+      <input type="text" id="cfgServiceId" value="service_z2qhnkz" />
+    </div>
+    <div class="config-field">
+      <label>Template ID</label>
+      <input type="text" id="cfgTemplateId" value="template_ojdd73f" />
+    </div>
+    <div class="config-field">
+      <label>Alert recipient email</label>
+      <input type="email" id="cfgEmail" value="tusharvats2006@gmail.com" />
+    </div>
+  </div>
+  <div class="cooldown-row">
+    <span>Cooldown between emails:</span>
+    <input type="range" min="1" max="30" value="5" id="cooldownSlider" oninput="document.getElementById('cooldownVal').textContent=this.value">
+    <span id="cooldownVal" style="min-width:32px; font-weight:600; color:#f9fafb;">5</span> min
+  </div>
+  <div class="config-row">
+    <button class="save-btn" onclick="saveConfig()"><i class="ti ti-device-floppy"></i> Save</button>
+    <button class="test-btn" onclick="sendTestEmail()"><i class="ti ti-send"></i> Send test email</button>
+    <div class="toggle-wrap">
+      <label class="toggle">
+        <input type="checkbox" id="emailToggle" checked>
+        <span class="slider-tog"></span>
+      </label>
+      Email alerts enabled
+    </div>
+    <span class="email-status" id="emailStatus"></span>
+  </div>
+</div>
+
+<!-- ===== CHANNEL CARDS ===== -->
+<div class="channel-grid">
+  <div class="channel-card" id="card50">
+    <div class="ch-header">
+      <div class="ch-title"><i class="ti ti-plug"></i> 50V channel</div>
+      <span class="ch-badge badge-ok" id="badge50">OK</span>
+    </div>
+    <div class="ch-reading color-ok" id="v50">—</div>
+    <div class="ch-range">Target: 48 – 52 V</div>
+    <div class="gauge-track">
+      <div class="gauge-fill safe" id="gauge50" style="width:50%"></div>
+      <div class="gauge-needle" id="needle50" style="left:50%"></div>
+    </div>
+    <div class="stats-row">
+      <div class="stat-item"><div class="stat-lbl">Min</div><div class="stat-val" id="min50">—</div></div>
+      <div class="stat-item"><div class="stat-lbl">Max</div><div class="stat-val" id="max50">—</div></div>
+      <div class="stat-item"><div class="stat-lbl">Avg</div><div class="stat-val" id="avg50">—</div></div>
+      <div class="stat-item"><div class="stat-lbl">σ</div><div class="stat-val" id="std50">—</div></div>
+    </div>
+  </div>
+  <div class="channel-card" id="card150">
+    <div class="ch-header">
+      <div class="ch-title"><i class="ti ti-plug"></i> 150V channel</div>
+      <span class="ch-badge badge-ok" id="badge150">OK</span>
+    </div>
+    <div class="ch-reading color-ok" id="v150">—</div>
+    <div class="ch-range">Target: 145 – 155 V</div>
+    <div class="gauge-track">
+      <div class="gauge-fill safe" id="gauge150" style="width:50%"></div>
+      <div class="gauge-needle" id="needle150" style="left:50%"></div>
+    </div>
+    <div class="stats-row">
+      <div class="stat-item"><div class="stat-lbl">Min</div><div class="stat-val" id="min150">—</div></div>
+      <div class="stat-item"><div class="stat-lbl">Max</div><div class="stat-val" id="max150">—</div></div>
+      <div class="stat-item"><div class="stat-lbl">Avg</div><div class="stat-val" id="avg150">—</div></div>
+      <div class="stat-item"><div class="stat-lbl">σ</div><div class="stat-val" id="std150">—</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== CHART ===== -->
+<div class="chart-panel">
+  <div class="chart-header">
+    <div class="chart-title"><i class="ti ti-chart-line"></i> Voltage history (last 60s)</div>
+    <div class="chart-controls">
+      <button class="ctrl-btn active" id="btnBoth"  onclick="setView('both')">Both</button>
+      <button class="ctrl-btn"        id="btn50"    onclick="setView('50')">50V</button>
+      <button class="ctrl-btn"        id="btn150"   onclick="setView('150')">150V</button>
+    </div>
+  </div>
+  <div class="legend-row">
+    <span><span class="legend-dot" style="background:#3b82f6"></span>50V channel</span>
+    <span><span class="legend-dot" style="background:#22c55e"></span>150V channel</span>
+  </div>
+  <div style="position:relative; width:100%; height:220px;">
+    <canvas id="mainChart" role="img" aria-label="Line chart showing 50V and 150V readings over time">Voltage history chart</canvas>
+  </div>
+</div>
+
+<!-- ===== ALERT LOG ===== -->
+<div class="alerts-panel">
+  <div class="alerts-header">
+    <div class="alerts-title">
+      <i class="ti ti-bell"></i> Alert log
+      <span class="badge-count" id="alertBadge" style="display:none">0</span>
+    </div>
+    <button class="clear-btn" onclick="clearAlerts()"><i class="ti ti-trash"></i> Clear</button>
+  </div>
+  <div class="alert-list" id="alertList">
+    <div class="no-alerts" id="noAlerts">No alerts — all channels nominal</div>
+  </div>
+</div>
+
+<!-- ===== FOOTER ===== -->
+<div class="footer-row">
+  <span id="footerSync">Last sync: —</span>
+  <button class="export-btn" onclick="exportCSV()"><i class="ti ti-download"></i> Export CSV</button>
+</div>
+
+<!-- ===== SCRIPT ===== -->
+<script>
+/* ── SENSOR CONFIG ──────────────────────────────────────────────────── */
+const DATA_URL   = '/data';
+const POLL_MS    = 1000;
+const MAX_POINTS = 60;
+const RANGE_50   = { lo:48,  hi:52,  center:50,  span:8  };
+const RANGE_150  = { lo:145, hi:155, center:150, span:20 };
+/* ─────────────────────────────────────────────────────────────────── */
+
+/* emailjs config — filled from UI */
+let ejsPublicKey  = '';
+let ejsServiceId  = 'service_z2qhnkz';
+let ejsTemplateId = '';
+let alertEmail    = '';
+let cooldownMs    = 5 * 60 * 1000;
+let lastEmailTime = 0;
+let emailsSent    = 0;
+let ejsReady      = false;
+
+function saveConfig() {
+  ejsPublicKey  = document.getElementById('cfgPublicKey').value.trim();
+  ejsServiceId  = document.getElementById('cfgServiceId').value.trim();
+  ejsTemplateId = document.getElementById('cfgTemplateId').value.trim();
+  alertEmail    = document.getElementById('cfgEmail').value.trim();
+  cooldownMs    = parseInt(document.getElementById('cooldownSlider').value) * 60 * 1000;
+
+  if (!ejsPublicKey || !ejsServiceId || !ejsTemplateId || !alertEmail) {
+    setEmailStatus('Fill in all four fields first.', 'err'); return;
+  }
+  try {
+    emailjs.init(ejsPublicKey);
+    ejsReady = true;
+    setEmailStatus('Config saved — emails enabled!', 'ok');
+  } catch(e) {
+    setEmailStatus('Invalid public key.', 'err');
+  }
+}
+
+function setEmailStatus(msg, cls) {
+  const el = document.getElementById('emailStatus');
+  el.textContent = msg;
+  el.className = 'email-status ' + (cls||'');
+  setTimeout(()=>{ el.textContent=''; el.className='email-status'; }, 4000);
+}
+
+function sendAlertEmail(channel, voltage, target, severity) {
+  if (!ejsReady) return;
+  if (!document.getElementById('emailToggle').checked) return;
+  const now = Date.now();
+  if (now - lastEmailTime < cooldownMs) {
+    const secsLeft = Math.ceil((cooldownMs-(now-lastEmailTime))/1000);
+    document.getElementById('nextEmailLabel').textContent = `Next in ${secsLeft}s`;
+    return;
+  }
+  lastEmailTime = now;
+
+  emailjs.send(ejsServiceId, ejsTemplateId, {
+    to_email:  alertEmail,
+    channel:   channel,
+    voltage:   voltage.toFixed(2) + ' V',
+    target:    target,
+    severity:  severity.toUpperCase(),
+    time:      new Date().toLocaleString(),
+  }).then(() => {
+    emailsSent++;
+    document.getElementById('emailCount').textContent = emailsSent;
+    document.getElementById('nextEmailLabel').textContent = 'Last sent: ' + new Date().toLocaleTimeString();
+    return true;
+  }).catch(err => {
+    console.error('EmailJS error:', err);
+    setEmailStatus('Email failed — check console.', 'err');
+    return false;
+  });
+  return true; // optimistic
+}
+
+function sendTestEmail() {
+  const key  = document.getElementById('cfgPublicKey').value.trim();
+  const sid  = document.getElementById('cfgServiceId').value.trim();
+  const tid  = document.getElementById('cfgTemplateId').value.trim();
+  const mail = document.getElementById('cfgEmail').value.trim();
+  if (!key||!sid||!tid||!mail) { setEmailStatus('Save config first.','err'); return; }
+  emailjs.init(key);
+  emailjs.send(sid, tid, {
+    to_email: mail, channel:'TEST', voltage:'50.00 V',
+    target:'48–52 V', severity:'TEST', time: new Date().toLocaleString()
+  }).then(()=>setEmailStatus('Test email sent! Check your inbox.','ok'))
+    .catch(()=>setEmailStatus('Test failed — check your IDs.','err'));
+}
+
+/* ── DATA / CHART ───────────────────────────────────────────────────── */
+const labels=[],data50arr=[],data150arr=[];
+const fullData50=[],fullData150=[],fullLabels=[];
+let min50v=Infinity,max50v=-Infinity,sum50=0;
+let min150v=Infinity,max150v=-Infinity,sum150=0;
+let sampleN=0,alertN=0,startTime=Date.now();
+let prevStatus50=null,prevStatus150=null;
+
+const chart=new Chart(document.getElementById('mainChart'),{
+  type:'line',
+  data:{
+    labels,
+    datasets:[
+      {label:'50V', data:data50arr, borderColor:'#3b82f6',borderWidth:1.5,pointRadius:0,tension:0.3,fill:false},
+      {label:'150V',data:data150arr,borderColor:'#22c55e',borderWidth:1.5,pointRadius:0,tension:0.3,fill:false}
+    ]
+  },
+  options:{
+    responsive:true,maintainAspectRatio:false,animation:false,
+    plugins:{legend:{display:false}},
+    scales:{
+      x:{ticks:{color:'#6b7280',font:{size:10},maxTicksLimit:8},grid:{color:'rgba(255,255,255,0.05)'}},
+      y:{ticks:{color:'#6b7280',font:{size:10},callback:v=>v.toFixed(1)+'V'},grid:{color:'rgba(255,255,255,0.05)'}}
+    }
+  }
+});
+
+function setView(v){
+  ['btnBoth','btn50','btn150'].forEach(id=>document.getElementById(id).classList.remove('active'));
+  document.getElementById(v==='both'?'btnBoth':'btn'+v).classList.add('active');
+  chart.data.datasets[0].hidden=(v==='150');
+  chart.data.datasets[1].hidden=(v==='50');
+  chart.update();
+}
+
+function classify(val,lo,hi){
+  if(val>=lo&&val<=hi) return 'ok';
+  const c=(lo+hi)/2,h=(hi-lo)/2;
+  return Math.abs(val-c)<=h*1.5?'warn':'crit';
+}
+function gaugePct(val,center,span){
+  const h=span*1.5;
+  return Math.max(0,Math.min(100,((val-(center-h))/(2*h))*100));
+}
+function stddev(arr,avg){
+  if(arr.length<2) return 0;
+  return Math.sqrt(arr.reduce((s,x)=>s+(x-avg)*(x-avg),0)/arr.length);
+}
+
+function addAlert(msg,sev,emailSent){
+  const noEl=document.getElementById('noAlerts');
+  if(noEl) noEl.style.display='none';
+  alertN++;
+  document.getElementById('alertBadge').style.display='inline';
+  document.getElementById('alertBadge').textContent=alertN;
+  const item=document.createElement('div');
+  item.className='alert-item';
+  item.innerHTML=`<i class="ti ti-alert-triangle color-alert-${sev}" style="font-size:14px"></i>
+    <span class="alert-time">${new Date().toLocaleTimeString()}</span>
+    <span class="alert-msg">${msg}</span>
+    ${emailSent?'<span class="alert-email-sent"><i class="ti ti-mail-check"></i> emailed</span>':''}`;
+  document.getElementById('alertList').insertBefore(item,document.getElementById('alertList').firstChild);
+}
+
+function clearAlerts(){
+  document.getElementById('alertList').innerHTML='<div class="no-alerts" id="noAlerts">No alerts — all channels nominal</div>';
+  alertN=0;
+  document.getElementById('alertBadge').style.display='none';
+  document.getElementById('alertBadge').textContent='0';
+}
+
+function exportCSV(){
+  const rows=[['Timestamp','50V Channel (V)','150V Channel (V)']];
+  for(let i=0;i<fullLabels.length;i++) rows.push([fullLabels[i],fullData50[i],fullData150[i]]);
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([rows.map(r=>r.join(',')).join('\n')],{type:'text/csv'}));
+  a.download=`voltage_log_${new Date().toISOString().slice(0,19).replace(/:/g,'-')}.csv`;
+  a.click();
+}
+
+function updateUptime(){
+  const s=Math.floor((Date.now()-startTime)/1000);
+  document.getElementById('uptimeLabel').textContent=s<60?`Uptime: ${s}s`:`Uptime: ${Math.floor(s/60)}m ${s%60}s`;
+}
+
+function simVoltage(center,noise){
+  return center+(Math.random()-0.5)*noise*2+Math.sin(Date.now()/4000)*noise*0.5;
+}
+
+async function updateData(){
+  let v50,v150;
+  try{
+    const r=await fetch(DATA_URL,{signal:AbortSignal.timeout(900)});
+    const d=await r.json();
+    v50=d.v50; v150=d.v150;
+  }catch(e){
+    /* REMOVE this block when you have a real /data endpoint */
+    v50=simVoltage(50,1.8);
+    v150=simVoltage(150,4.5);
+  }
+
+  sampleN++;
+  sum50+=v50; sum150+=v150;
+  min50v=Math.min(min50v,v50); max50v=Math.max(max50v,v50);
+  min150v=Math.min(min150v,v150); max150v=Math.max(max150v,v150);
+  const avg50=sum50/sampleN, avg150=sum150/sampleN;
+
+  const ts=new Date().toLocaleTimeString();
+  labels.push(ts); data50arr.push(+v50.toFixed(3)); data150arr.push(+v150.toFixed(3));
+  fullLabels.push(ts); fullData50.push(+v50.toFixed(3)); fullData150.push(+v150.toFixed(3));
+  if(labels.length>MAX_POINTS){labels.shift();data50arr.shift();data150arr.shift();}
+
+  const s50=classify(v50,RANGE_50.lo,RANGE_50.hi);
+  const s150=classify(v150,RANGE_150.lo,RANGE_150.hi);
+  const colorMap={ok:'color-ok',warn:'color-warn',crit:'color-crit'};
+
+  document.getElementById('v50').textContent=v50.toFixed(2)+' V';
+  document.getElementById('v50').className='ch-reading '+colorMap[s50];
+  document.getElementById('v150').textContent=v150.toFixed(2)+' V';
+  document.getElementById('v150').className='ch-reading '+colorMap[s150];
+
+  document.getElementById('min50').textContent=min50v.toFixed(2)+' V';
+  document.getElementById('max50').textContent=max50v.toFixed(2)+' V';
+  document.getElementById('avg50').textContent=avg50.toFixed(2)+' V';
+  document.getElementById('std50').textContent=stddev(data50arr,avg50).toFixed(2);
+  document.getElementById('min150').textContent=min150v.toFixed(2)+' V';
+  document.getElementById('max150').textContent=max150v.toFixed(2)+' V';
+  document.getElementById('avg150').textContent=avg150.toFixed(2)+' V';
+  document.getElementById('std150').textContent=stddev(data150arr,avg150).toFixed(2);
+
+  const badgeLabel={ok:'OK',warn:'HIGH / LOW',crit:'CRITICAL'};
+  const badgeCls={ok:'ch-badge badge-ok',warn:'ch-badge badge-warn',crit:'ch-badge badge-crit'};
+  document.getElementById('badge50').textContent=badgeLabel[s50];
+  document.getElementById('badge50').className=badgeCls[s50];
+  document.getElementById('badge150').textContent=badgeLabel[s150];
+  document.getElementById('badge150').className=badgeCls[s150];
+
+  const gp50=gaugePct(v50,RANGE_50.center,RANGE_50.span);
+  const gp150=gaugePct(v150,RANGE_150.center,RANGE_150.span);
+  const gaugeCls={ok:'gauge-fill safe',warn:'gauge-fill warn',crit:'gauge-fill crit'};
+  document.getElementById('gauge50').style.width=gp50+'%';
+  document.getElementById('gauge50').className=gaugeCls[s50];
+  document.getElementById('needle50').style.left=gp50+'%';
+  document.getElementById('gauge150').style.width=gp150+'%';
+  document.getElementById('gauge150').className=gaugeCls[s150];
+  document.getElementById('needle150').style.left=gp150+'%';
+
+  const borderCls={ok:'channel-card',warn:'channel-card warn-border',crit:'channel-card crit-border'};
+  document.getElementById('card50').className=borderCls[s50];
+  document.getElementById('card150').className=borderCls[s150];
+
+  const overall=(s50==='crit'||s150==='crit')?'crit':(s50==='warn'||s150==='warn')?'warn':'ok';
+  const statusText={ok:'Normal',warn:'Warning',crit:'Critical'};
+  const statusDetail={ok:'All channels in range',warn:'One channel out of range',crit:'Voltage out of safe bounds'};
+  document.getElementById('statusLabel').textContent=statusText[overall];
+  document.getElementById('statusLabel').className='metric-value status-'+overall;
+  document.getElementById('statusDetail').textContent=statusDetail[overall];
+
+  /* alerts + email on state change */
+  if(prevStatus50!=null && s50!=='ok' && prevStatus50==='ok'){
+    const sent=sendAlertEmail('50V channel',v50,'48–52 V',s50);
+    addAlert(`50V channel: ${v50.toFixed(2)}V (target 48–52V)`,s50,sent);
+  }
+  if(prevStatus50!=null && s50==='ok' && prevStatus50!=='ok'){
+    addAlert('50V channel returned to normal','warn',false);
+  }
+  if(prevStatus150!=null && s150!=='ok' && prevStatus150==='ok'){
+    const sent=sendAlertEmail('150V channel',v150,'145–155 V',s150);
+    addAlert(`150V channel: ${v150.toFixed(2)}V (target 145–155V)`,s150,sent);
+  }
+  if(prevStatus150!=null && s150==='ok' && prevStatus150!=='ok'){
+    addAlert('150V channel returned to normal','warn',false);
+  }
+  if(prevStatus50==null && s50!=='ok'){
+    const sent=sendAlertEmail('50V channel',v50,'48–52 V',s50);
+    addAlert(`50V channel: ${v50.toFixed(2)}V (target 48–52V)`,s50,sent);
+  }
+  if(prevStatus150==null && s150!=='ok'){
+    const sent=sendAlertEmail('150V channel',v150,'145–155 V',s150);
+    addAlert(`150V channel: ${v150.toFixed(2)}V (target 145–155V)`,s150,sent);
+  }
+
+  prevStatus50=s50; prevStatus150=s150;
+  document.getElementById('sampleCount').textContent=sampleN;
+  document.getElementById('syncLine').textContent=`Last sync: ${ts}`;
+  document.getElementById('footerSync').textContent=`Last sync: ${ts}`;
+  chart.update();
+  updateUptime();
+}
+
+updateData();
+setInterval(updateData, POLL_MS);
+setInterval(updateUptime, 1000);
+</script>
+</body>
+</html>
