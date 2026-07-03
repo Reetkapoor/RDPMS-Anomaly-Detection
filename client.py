@@ -2,10 +2,12 @@ import socket
 import numpy as np
 from sklearn.ensemble import IsolationForest
 import time
+import csv
+import os
 
 # ── Config ────────────────────────────────────────────────
-HOST = '172.20.10.2'
-PORT = 5000
+HOST = '10.26.0.194'
+PORT = 8000
 WARMUP_SAMPLES = 200
 COLUMNS = ['sensor_1', 'sensor_2']
 
@@ -15,6 +17,18 @@ client.connect((HOST, PORT))
 print("Connected to sensor stream...")
 print(f"Collecting {WARMUP_SAMPLES} readings to learn normal baseline...\n")
 
+
+# ── Create Log File if doesn't exist ───────────────────────────────────────────────
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_FILE = os.path.join(BASE_DIR, "anomaly_log.csv")
+
+# After your imports, create the file with headers if it doesn't exist
+if not os.path.exists(LOG_FILE):
+    with open(LOG_FILE, 'w', newline='') as f:
+        writer = csv.writer(f)
+        writer.writerow(['timestamp', 'sensor_1', 'sensor_2', 'score', 'is_anomaly'])
+
+
 # ── State ─────────────────────────────────────────────────
 warmup_buffer = []
 model = None
@@ -23,7 +37,7 @@ leftover = ""
 
 try:
     while True:
-        raw = client.recv(1024).decode()
+        raw = client.recv(1024).decode("utf-8")
         if not raw:
             print("Stream ended.")
             break
@@ -80,6 +94,17 @@ try:
                     print(f"[{timestamp}] 🚨 ANOMALY  | {dict(zip(COLUMNS, values))} | score: {score:.4f}")
                 else:
                     print(f"[{timestamp}] ✅ Normal   | {dict(zip(COLUMNS, values))} | score: {score:.4f}")
+
+                # ── Log To CSV ───────────────────────────
+                with open(LOG_FILE, 'a', newline='') as f:
+                    writer = csv.writer(f)
+                    writer.writerow([
+                        time.strftime('%H:%M:%S'),
+                        values[0],
+                        values[1],
+                        round(score, 4),
+                        1 if pred == -1 else 0
+                    ])
 
 except KeyboardInterrupt:
     print("\nStopped by user.")
